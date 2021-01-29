@@ -19,7 +19,8 @@ LC_ALL=en_US.UTF-8;
 
 BRETTONW="/Users/brettonw";
 
-EDITOR="/usr/local/bin/bbedit --new-window --separate-windows --create-unix --clean --wait --resume";
+#EDITOR="/usr/local/bin/bbedit --separate-windows --create-unix --clean --wait --resume";
+EDITOR="/usr/local/bin/mate -w";
 SVN_EDITOR=$EDITOR;
 GIT_EDITOR=$EDITOR;
 
@@ -38,7 +39,8 @@ set +a
 alias xcode="open -a /Applications/Xcode.app";
 
 function ec {
-    /usr/local/bin/bbedit --new-window --separate-windows --create-unix --clean $*;
+    #/usr/local/bin/bbedit --separate-windows --create-unix --clean $*;
+    /usr/local/bin/mate $*;
 }
 
 # this function prints the paths of the open finder windows using the window index below
