@@ -58,8 +58,9 @@ if [ -z "$nothingToCommit" ]; then
         branchName=$(git branch | grep \* | cut -d ' ' -f2);
         read -p "Subject Line: ($branchName) " subjectLine;
         commitMessageFile=$(mktemp /tmp/commit.XXXXXXXXX);
-        echo "$branchName $subjectLine" > $commitMessageFile;
-        echo >> $commitMessageFile; echo "Change Description: " >> $commitMessageFile;
+        echo "$branchName - $subjectLine" > $commitMessageFile;
+        echo >> $commitMessageFile;
+        echo "Change Description: " >> $commitMessageFile;
         eval "$EDITOR $commitMessageFile";
 
         # checkin the changes

@@ -3,7 +3,7 @@
 # git functions used frequently
 function gitgo {
     #git add --all . && git commit && git push origin HEAD;
-    gitgo.sh;
+    git-go.sh;
 }
 
 function gitrevert {
