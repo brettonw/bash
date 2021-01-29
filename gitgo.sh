@@ -1,12 +1,5 @@
 #! /usr/bin/env bash
 
-# The regular bash eval works by jamming all its arguments into a string then
-# evaluating the string. This function treats its arguments as individual
-# arguments to be passed to the command being run.
-function eval_command() {
-  "$@";
-}
-
 # back up to the root of the git repository and merge in the default branch (usually development)
 cd $(git rev-parse --show-toplevel);
 DEFAULT_GIT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs);
@@ -32,6 +25,7 @@ if [ -z "$nothingToCommit" ]; then
     for file in "${filesToCommit[@]}"; do
         action=${file%%:*}; action="${action//[[:space:]]/}";
         file=${file#*:}; file="${file//[[:space:]]/}";
+        echo "$action: $file";
         echo "$action: $file" >> $commitMessageFile;
     done
 
@@ -43,7 +37,7 @@ if [ -z "$nothingToCommit" ]; then
     done
 
     # let the user see the list of files, edit, and then grab the resulting list
-    eval_command $EDITOR $commitMessageFile;
+    eval "$EDITOR $commitMessageFile";
     filesToCommit=($(cat $commitMessageFile | grep -E 'modified: |new file: |deleted: |untracked: '));
 
     # add the files to the change list
@@ -66,7 +60,7 @@ if [ -z "$nothingToCommit" ]; then
         commitMessageFile=$(mktemp /tmp/commit.XXXXXXXXX);
         echo "$branchName $subjectLine" > $commitMessageFile;
         echo >> $commitMessageFile; echo "Change Description: " >> $commitMessageFile;
-        eval_command $EDITOR $commitMessageFile;
+        eval "$EDITOR $commitMessageFile";
 
         # checkin the changes
         git commit --file $commitMessageFile && git push origin HEAD;
