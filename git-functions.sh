@@ -11,7 +11,8 @@ function gitrevert {
 }
 
 function gitb {
-	DEFAULT_GIT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs);
+    DEFAULT_GIT_BRANCH=$(basename $(git symbolic-ref --short refs/remotes/origin/HEAD) );
+	#DEFAULT_GIT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs);
     local branchname="${1,,}";
     local srcbranchname="${2,,}";
     if [ -z $srcbranchname ]; then
