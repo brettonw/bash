@@ -1,8 +1,16 @@
 #! /usr/bin/env perl
 
+use Cwd;
+use JSON;
+use File::Basename;
+use Path::Tiny;
+
+# set the git command
+my $git = "git --no-pager";
+
 # prune the cache of remote branches
 print STDERR "Refreshing remote branch cache...\n";
-system ("git fetch -p origin");
+system ("$git fetch -p origin");
 
 sub conditionBranchName {
     my ($input) = @_;
@@ -12,27 +20,27 @@ sub conditionBranchName {
     return $input;
 }
 
-sub isFullyCompliantName {
-    my ($branchName, $report) = @_;
-    my $isFullyCompliant = $branchName =~ /[\/\\\-_]/;
-    if ((defined $report) && (! $isFullyCompliant)) {
-        print STDERR "[$report] Semi-compliant: $branchName\n";
-    }
-    return $isFullyCompliant;
-}
+my $allowedPrefixes = {
+    "hotfix" => 1,
+    "feature" => 1,
+    "release" => 1,
+    "bugfix" => 1
+};
 
 sub isCompliantName {
     my ($branchName, $report) = @_;
-    my $isCompliant = ($branchName =~ /^QMC?EN[ -_]?\d+/i) || ($branchName =~ /^\d+[\/\\\-_]?/i);
-    if ($isCompliant) {
-        isFullyCompliantName ($branchName, $report);
-    }
-    return $isCompliant;
+    # check that the branch name starts with one of the approved prefixes
+    my @splitName = split(/\//, $branchName, 2);
+    return ($#splitName == 1) && (exists $allowedPrefixes->{$splitName[0]});
 }
 
-my $reservedBranches = {
+my $reservedBranchNames = {
+    "test" => 1,
+    "release" => 1,
     "development" => 1,
+    "develop" => 1,
     "master" => 1,
+    "main" => 1,
     "integration" => 1
 };
 
@@ -43,7 +51,7 @@ sub buildBranchNameDictionary {
     my $branchNameDictionary ={};
     for my $branchName (@branchNames) {
         $branchName = conditionBranchName ($branchName);
-        if (exists $reservedBranches->{$branchName}) {
+        if (exists $reservedBranchNames->{$branchName}) {
             if (defined $report) {
                 #print STDERR "[$report] RESERVED: $branchName\n";
             }
@@ -69,16 +77,40 @@ sub yesNo {
     return ($yesNo eq "y");
 }
 
-# get the branch statuses
-my $mergedRemoteBranchesDictionary = buildBranchNameDictionary ("git branch -r --merged development", "MERGED REMOTE");
-#my $mergedLocalBranchesDictionary = buildBranchNameDictionary ("git branch --merged development", "MERGED LOCAL");
-my $allRemoteBranchesDictionary = buildBranchNameDictionary ("git branch -r --list");
-my $allLocalBranchesDictionary = buildBranchNameDictionary ("git branch --list", "ALL LOCAL");
+# get the default branch
+my $headBranches = `$git branch --remote --list '*/HEAD'`;
+chomp($headBranches);
+my $defaultBranch = (split(/\//, $headBranches))[-1];
 
-# a user map
-my $users = {
-    "Bretton Wade"      => "Bretton Wade"
-};
+# get the branch statuses
+my $mergedRemoteBranchesDictionary = buildBranchNameDictionary ("$git branch --remote --merged $defaultBranch", "MERGED REMOTE");
+my $mergedLocalBranchesDictionary = buildBranchNameDictionary ("$git branch --merged $defaultBranch", "MERGED LOCAL");
+my $allRemoteBranchesDictionary = buildBranchNameDictionary ("$git branch --remote --list");
+my $allLocalBranchesDictionary = buildBranchNameDictionary ("$git branch --list", "ALL LOCAL");
+
+my $users = { "bretton wade" => "Bretton Wade" };
+sub findUserMap {
+    my ($dir) = @_;
+    # ensure trailing slash
+    if ($dir !~ /\/$/) {
+        $dir = "$dir/";
+    }
+
+    # check for the usermap file
+    my $userMapFile = path("$dir/usermap.json");
+    if ($userMapFile->is_file) {
+        #return $userMapFileName
+        print STDERR "Reading users from: $userMapFile\n";
+        my $userMapFileContents = $userMapFile->slurp_utf8;
+        $users = decode_json($userMapFileContents);
+    } else {
+        $dir =~ s/[^\/]+\/$//;
+        if ($dir ne "/") {
+            findUserMap ($dir)
+        }
+    }
+}
+findUserMap(cwd());
 
 # condition the users list - the encountered user names are the keys, and their canonical names
 # is used to join together all branches by unique person, even if they have multiple user names
@@ -93,16 +125,16 @@ for my $user (keys %$users) {
 
 # get the creator/owner of all the branches, sort them into a dictionary by user
 my $byUser = {};
-my $fullyCompliantByUser = {};
+my $compliantByUser = {};
 my $totalUserBranches = 0;
-my @branchOwners = `git for-each-ref --format='%(authorname);%(refname)'`;
+my @branchOwners = `$git for-each-ref --format='%(authorname);%(refname)'`;
 chomp @branchOwners;
 for my $branchOwner (@branchOwners) {
     my ($branchOwnerName, $branchName) = split (/;/, $branchOwner, 2);
     $branchName = conditionBranchName ($branchName);
     if (exists $mergedRemoteBranchesDictionary->{$branchName}) {
-        $branchOwnerName = ucfirst ($branchOwnerName);
-        
+        $branchOwnerName = lc ($branchOwnerName);
+
         my $user;
         if (exists $users->{$branchOwnerName}) {
             $user = $users->{$branchOwnerName}
@@ -117,9 +149,9 @@ for my $branchOwner (@branchOwners) {
         my $userBranchList = $byUser->{$user};
         push (@$userBranchList, $branchName);
         $totalUserBranches++;
-        
-        if (isFullyCompliantName ($branchName, $user)) {
-            $fullyCompliantByUser->{$user}++;
+
+        if (isCompliantName ($branchName, $user)) {
+            $compliantByUser->{$user}++;
         }
     }
 }
@@ -135,7 +167,7 @@ for my $localBranch (keys %$allLocalBranchesDictionary) {
         if (exists $mergedRemoteBranchesDictionary->{$localBranch}) {
             print STDERR " (MERGED)";
             # it is, this should be removed, locally *and* remotely
-            system ("git push --delete origin $localBranch && sleep 5 && git branch -D $localBranch");
+            system ("$git push --delete origin $localBranch && sleep 5 && $git branch -D $localBranch");
             print STDERR " (REMOVED)";
             $removedBranches->{$localBranch} = $localBranch;
         } else {
@@ -147,7 +179,7 @@ for my $localBranch (keys %$allLocalBranchesDictionary) {
         # there is no remove backing, do we want to delete this?
         print STDERR " (LOCAL ONLY)\n";
         if (yesNo ("Remove branch with no remote backing")) {
-            system ("git branch -d $localBranch");
+            system ("$git branch -d $localBranch");
             $removedBranches->{$localBranch} = $localBranch;
         }
     }
@@ -158,10 +190,10 @@ print STDERR "\n";
 print STDERR " COUNT   COMPLIANT   USER\n------- ----------- ------------\n";
 for my $user (sort keys %$byUser) {
     my $userBranchList = $byUser->{$user};
-    print STDERR sprintf (" % 5d   % 9d   %s\n", scalar (@$userBranchList), $fullyCompliantByUser->{$user}, $user);
+    print STDERR sprintf (" % 5d   % 9d   %s\n", scalar (@$userBranchList), $compliantByUser->{$user}, $user);
 }
 print STDERR sprintf ("------- ----------- ------------\n% 5d\n\n", $totalUserBranches, $totalNonCompliantBranches);
-    
+
 # ask the user if they want to check remote branches
 if (yesNo ("Check all remote branches")) {
     # loop over the users
@@ -170,7 +202,7 @@ if (yesNo ("Check all remote branches")) {
         if (yesNo ("$user (" . scalar(@$userBranchList) . ") MERGED branches, continue")) {
             for my $userBranch (@$userBranchList) {
                 if (yesNo ("    Delete $userBranch (MERGED)")) {
-                    system ("git push --delete origin $userBranch");
+                    system ("$git push --delete origin $userBranch");
                     $removedBranches->{$userBranch} = $userBranch;
                 }
             }
